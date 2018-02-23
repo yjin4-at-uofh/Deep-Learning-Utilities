@@ -62,6 +62,9 @@ We would find that this handle could project the matrix and recover it with the 
 This handle also support you to read some special data by high-level API with low-level realization. Now we only support 1 mode.
 
 #### Read Seismic Data
+
+##### Basic
+
 This is an API for reading the raw data from shot/receiver collections. Use the following code to get the avaliable data.
 
 ```python
@@ -74,13 +77,38 @@ This is an API for reading the raw data from shot/receiver collections. Use the 
     print(x.size())
 ```
 
+##### Batch Reading
+
+Sometimes we need to extract batches (i.e. the local areas) from the original data when training the network. Hence here we provide the batch-reading policy:
+
+```python
+    dio = du.DataIO() # Create the handle
+    dio.load(b'path',b'seismic') # Load source files
+    p = dio.read([10, 150, 200]) # Read 10 samples as a batch with a size of h=150, w=200. Noted that h should not be more than receiver number and w should not be more than time steps.
+    print(p.shape, p.dtype)
+    print(x.size())
+```
+
+To test the effectiveness of this wrapped C++ approach, we perform a comparison with the python approach.
+
+| A comparison of consumed time between DataIO approaches |
+| ------ |
+|![][dataio-eff]|
+
+We could know that the C++ approach is much more efficient than the python approach.
+
 For more instructions, you could tap `help(du)`. 
 
 ## Update Report
 
-### V0.5 update report:
+### Version: 0.55 update report: @ 2018/2/23
+1. Add the `batchRead` method for `DataIO` tool.
+    
+### Version: 0.5 update report: @ 2018/2/21
 1. Provide the `Projector` tool and `DataIO` tool.
  
 ## Version of currently used Python library
 * Python 3.5
 * numpy 1.13
+
+[dataio-eff]:display/dataio_effectiveness.PNG

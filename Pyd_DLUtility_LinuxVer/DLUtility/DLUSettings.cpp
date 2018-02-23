@@ -40,6 +40,9 @@ PyObject * cdlu::IO_Abstract::read(size_t s_num) {
 PyObject * cdlu::IO_Abstract::read(PyObject *s_numPyList) {
     return nullptr;
 }
+PyObject * cdlu::IO_Abstract::read(int batchNum, PyObject *batchShape) {
+    return nullptr;
+}
 std::ostream & cdlu::IO_Abstract::__print(std::ostream & out) const {
     auto self_size = size();
     out << "<IOHandle - Abstract:" << endl;
@@ -223,6 +226,62 @@ PyObject *cdlu::IO_Sesmic::read(PyObject *s_numPyList) {
     }
     npy_intp odims[] = { static_cast<npy_intp>(num_rec), static_cast<npy_intp>(num_time), static_cast<npy_intp>(ochannels) };
     PyObject *PyResPic = PyArray_SimpleNewFromData(3, odims, NPY_FLOAT32, reinterpret_cast<void *>(out_data));
+    return PyResPic;
+}
+PyObject *cdlu::IO_Sesmic::read(int batchNum, PyObject *batchShape) {
+    if (batchNum <= 0) {
+        Py_RETURN_NONE;
+    }
+    if (PyArray_API == nullptr) {
+        import_array();
+    }
+    auto ochannels = PySequence_Size(batchShape);
+    if (ochannels != 2) {
+        cerr << cdlu::DLU_error_log(0x00A) << endl;
+        Py_RETURN_NONE;
+    }
+    auto longcheck = 0;
+    for (decltype(ochannels) i = 0; i < ochannels; i++) {
+        auto f_obj = PySequence_GetItem(batchShape, i);
+        if (!f_obj) {
+            cerr << cdlu::DLU_error_log(0x009) << endl;
+            Py_RETURN_NONE;
+        }
+        auto f_pos = PyLong_AsLongAndOverflow(f_obj, &longcheck);
+        if (longcheck) {
+            cerr << cdlu::DLU_error_log(0x009) << endl;
+            Py_RETURN_NONE;
+        }
+        else if (i == 0 && f_pos >= num_rec) {
+            cerr << cdlu::DLU_error_log(0x007) << ", occurring at height= " << static_cast<int>(f_pos) << ", max height=" << num_rec << endl;
+            Py_RETURN_NONE;
+        }
+        else if (i == 1 && f_pos >= num_time) {
+            cerr << cdlu::DLU_error_log(0x007) << ", occurring at width= " << static_cast<int>(f_pos) << ", max width=" << num_time << endl;
+            Py_RETURN_NONE;
+        }
+    }
+    auto h = PyLong_AsLong(PySequence_GetItem(batchShape, 0));
+    auto w = PyLong_AsLong(PySequence_GetItem(batchShape, 1));
+    auto offset_fig = num_time * num_rec;
+    auto offset_row = num_time;
+    std::default_random_engine rd_e(rand());
+    std::uniform_int_distribution<size_t> rd_shot(0, num_shot - 1);
+    decltype(rd_shot) rd_w(0, num_time - w);
+    decltype(rd_shot) rd_h(0, num_rec - h);
+    auto newdata = new float[h*w*batchNum];
+    auto p = newdata;
+    size_t chunkStart = 0;
+    for (int i = 0; i < batchNum; i++) {
+        chunkStart = rd_shot(rd_e)*offset_fig + rd_h(rd_e)*offset_row + rd_w(rd_e);
+        for (size_t row = 0; row < h; row++, p += w) {
+            __h.clear();
+            __h.seekg((chunkStart + row * offset_row) * sizeof(float), std::ios::beg); // The matrix is stored in a row order.
+            __h.read(reinterpret_cast<char *>(p), w * sizeof(float));
+        }
+    }
+    npy_intp odims[] = { static_cast<npy_intp>(batchNum), static_cast<npy_intp>(h), static_cast<npy_intp>(w), 1 };
+    PyObject *PyResPic = PyArray_SimpleNewFromData(4, odims, NPY_FLOAT32, reinterpret_cast<void *>(newdata));
     return PyResPic;
 }
 bool cdlu::IO_Sesmic::__read_log_info() {

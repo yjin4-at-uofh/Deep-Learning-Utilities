@@ -1,13 +1,15 @@
 ﻿// dllmain.cpp : 定义 DLL 应用程序的入口点。
 #include "stdafx.h"
 #include "DLUtility.h"
-
+#include <time.h>
 /*****************************************************************************
 * 模块的初始化函数. import 时自动调用。
 *****************************************************************************/
 PyMODINIT_FUNC           // == __decslpec(dllexport) PyObject*, 定义导出函数.
 PyInit_dlUtility(void) {       //模块外部名称为--CppClass
-    PyObject* pReturn = 0;
+    srand(static_cast<unsigned int>(time(0)));
+    
+    PyObject* pReturn = nullptr;
     C_DLU_Proj_ClassInfo.tp_new = PyType_GenericNew; //此类的new内置函数—建立对象.
     C_DLU_DtIO_ClassInfo.tp_new = PyType_GenericNew;
                                                   /// 完成对象类型的初始化—包括添加其继承特性等等。

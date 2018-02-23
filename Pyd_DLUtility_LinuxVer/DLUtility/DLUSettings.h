@@ -2,11 +2,12 @@
 #define DLUSETTINGS_H_INCLUDED
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-#define DLUSETTINGS_CURRENT_VERSION "0.5"
+#define DLUSETTINGS_CURRENT_VERSION "0.55"
 
 #include <unordered_map>
 #include <fstream>
 #include <sstream>
+#include <random>
 #include <Python.h>
 #include <numpy/arrayobject.h>
 
@@ -90,8 +91,9 @@ namespace cdlu {
         virtual PyObject *size() const;
         virtual bool load(string filename) = 0;
         virtual void close() = 0;
-        virtual PyObject *read(size_t s_num);
-        virtual PyObject *read(PyObject *s_numPyList);
+        virtual PyObject *read(size_t s_num); // Read a single data
+        virtual PyObject *read(PyObject *s_numPyList); // Read a series of data, arranged by channels
+        virtual PyObject *read(int batchNum, PyObject *batchShape); // Read random batch, arranged by batchNum
     protected:
         std::ifstream __h;
         std::ofstream __oh;
@@ -116,6 +118,7 @@ namespace cdlu {
         void close() override;
         PyObject *read(size_t s_num) override;
         PyObject *read(PyObject *s_numPyList) override;
+        PyObject *read(int batchNum, PyObject *batchShape) override;
     private:
         string __filename; //用来拷贝构造和赋值的临时变量
         string __folderpath;

@@ -29,6 +29,9 @@ string cdlu::DLU_error_log(int errornum) {
     case 0x009:
         OStr << "[IOSes3] Could not extract the index from the indices sequence, please check your input.";
         break;
+    case 0x00A:
+        OStr << "[IOSes4] Need to input a shape like (height, weight).";
+        break;
     case 0x100:
         OStr << "[Core00] The ordinary error raised by python core.";
         break;

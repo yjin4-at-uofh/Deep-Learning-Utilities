@@ -43,7 +43,7 @@ static PyMemberDef C_DLU_Proj_DataMembers[] =        //◊¢≤·¿‡/Ω·ππµƒ ˝æ›≥…‘±.
 { //≤ª◊¢≤·»Œ∫Œ ˝æ›£¨“ÚŒ™¿‡ ˝æ›CMpegDecoder‘⁄…œ≤„ «≤ªø…º˚µƒ
   //{"m_dEnglish", T_FLOAT,  offsetof(CScore, m_dEnglish), 0, "The English score of instance."},
     { "hAddress",   T_ULONGLONG, offsetof(C_DLU_Projector, _in_Handle),   READONLY, "The address of the handle in memory." },
-{ nullptr, 0, 0, 0, nullptr }
+    { nullptr, 0, 0, 0, nullptr }
 };
 
 // DLU_DataIO
@@ -60,7 +60,7 @@ static PyMemberDef C_DLU_DtIO_DataMembers[] =        //◊¢≤·¿‡/Ω·ππµƒ ˝æ›≥…‘±.
 { //≤ª◊¢≤·»Œ∫Œ ˝æ›£¨“ÚŒ™¿‡ ˝æ›CMpegDecoder‘⁄…œ≤„ «≤ªø…º˚µƒ
   //{"m_dEnglish", T_FLOAT,  offsetof(CScore, m_dEnglish), 0, "The English score of instance."},
     { "hAddress",   T_ULONGLONG, offsetof(C_DLU_DataIO, _in_Handle),   READONLY, "The address of the handle in memory." },
-{ nullptr, 0, 0, 0, nullptr }
+    { nullptr, 0, 0, 0, nullptr }
 };
 
 /*****************************************************************************
@@ -93,6 +93,8 @@ Yuchen's Deep Learning Enhancing Tools - Readme
         process some data and do something on numpy arrays efficiently.
     For more instructions, you could tap help(dlUtilities). 
 ================================================================================
+V0.55 update report:
+    1. Add the 'batchRead' method for 'DataIO' tool.
 V0.5 update report:
     1. Provide the 'Projector' tool and 'DataIO' tool.
 )";
@@ -354,6 +356,33 @@ static PyObject* C_DLU_DtIO_Read(C_DLU_DataIO* Self, PyObject *args, PyObject *k
     Py_RETURN_NONE;
 }
 
+static PyObject* C_DLU_DtIO_BatchRead(C_DLU_DataIO* Self, PyObject *args, PyObject *kwargs) {
+    /* ∑‚◊∞(ndarray)batchread∫Ø ˝£¨ ‰»Î“¿¥ŒŒ™:
+    *   batchnum     [int]: batch ˝ƒø
+    *   shape      [tuple]: ≥ﬂ¥Á
+    */
+    if (!Self->_in_Handle) {
+        PyErr_SetString(PyExc_IOError, "Should not read without loading file.");
+        return nullptr;
+    }
+    int batchnum = 0;
+    PyObject *shape = nullptr;
+    static char *kwlist[] = { "batchNum", "shape", nullptr };
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "iO|", kwlist, &batchnum, &shape)) {
+        PyErr_SetString(PyExc_TypeError, "need 'batchNum(int)', 'shape(sequence)' and an optional 'multithread(bool)'");
+        return nullptr;
+    }
+    auto res = Self->_in_Handle->read(batchnum, shape);
+    if (!res) {
+        PyErr_SetString(PyExc_NotImplementedError, "The current mode does not provide this function.");
+        return nullptr;
+    }
+    else {
+        return res;
+    }
+    Py_RETURN_NONE;
+}
+
 //◊¢“‚œ¬√Ê’‚¡©∫Ø ˝£¨Œ™ ≤√¥À¸√«≤ª–Ë“™Py_IN/DECREFƒÿ£ø“ÚŒ™Œ¥¥¥Ω®¡Ÿ ±±‰¡ø£¨“≤√ª”–
 // π”√–Œ»ÁNone’‚—˘µƒœ÷≥…∑µªÿ∂‘œÛ£°
 /*static PyObject* FreePyArray(PyArrayObject *PyArray) {
@@ -403,11 +432,13 @@ static PyMethodDef C_DLU_DtIO_MethodMembers[] =      //◊¢≤·¿‡µƒÀ˘”–≥…‘±∫Ø ˝Ω·ππ¡
     { "close",              (PyCFunction)C_DLU_DtIO_Close,                METH_NOARGS, \
     "close a loaded/saved IO handle, avaliable only after we have called load/save method." },
     { "size",               (PyCFunction)C_DLU_DtIO_Size,                 METH_NOARGS, \
-    "Return the size of file in current handle. Sometimes it has other meanings and sometimes this method is not avaliable. It depends on the mode where the handle works." },
+    "Return the size of file in current handle. Sometimes it has other meanings and sometimes this\n method is not avaliable. It depends on the mode where the handle works." },
     { "load",               (PyCFunction)C_DLU_DtIO_Load,                 METH_VARARGS | METH_KEYWORDS, \
     "Load a resource file.\n - filePath: [bytes] a path which defines where the file stored.\n - mode: [bytes] the assigned mode of the IN handle (default: 'seismic')." },
     { "read",               (PyCFunction)C_DLU_DtIO_Read,                 METH_VARARGS | METH_KEYWORDS, \
     "Read a data chunk.\n - indices: [int/sequence] the indices (or index) of fetched data." },
+    { "batchRead",          (PyCFunction)C_DLU_DtIO_BatchRead,            METH_VARARGS | METH_KEYWORDS, \
+    "Use a random strategy to read a data batch.\n - batchNum: [int] the number of fetched sample data.\n - shape: [sequence] the shape of returned data." },
     { nullptr, nullptr, 0, nullptr }
 };
 
