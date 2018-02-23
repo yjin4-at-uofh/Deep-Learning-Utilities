@@ -93,7 +93,7 @@ To test the effectiveness of this wrapped C++ approach, we perform a comparison 
 
 | A comparison of consumed time between DataIO approaches |
 | ------ |
-|![][dataio-eff]|
+|![][dataioeff]|
 
 We could know that the C++ approach is much more efficient than the python approach.
 
@@ -111,4 +111,4 @@ For more instructions, you could tap `help(du)`.
 * Python 3.5
 * numpy 1.13
 
-[dataio-eff]:display/dataio_effectiveness.PNG
+[dataioeff]:display/dataio_effectiveness.png
