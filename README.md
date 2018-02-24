@@ -84,7 +84,7 @@ Sometimes we need to extract batches (i.e. the local areas) from the original da
 ```python
     dio = du.DataIO() # Create the handle
     dio.load(b'path',b'seismic') # Load source files
-    p = dio.read([10, 150, 200]) # Read 10 samples as a batch with a size of h=150, w=200. Noted that h should not be more than receiver number and w should not be more than time steps.
+    p = dio.batchRead(10, [150, 200]) # Read 10 samples as a batch with a size of h=150, w=200. Noted that h should not be more than receiver number and w should not be more than time steps.
     print(p.shape, p.dtype)
     print(x.size())
 ```
