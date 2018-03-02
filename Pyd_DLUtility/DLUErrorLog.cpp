@@ -18,7 +18,7 @@ string cdlu::DLU_error_log(int errornum) {
         OStr << "[Proj4] The input channel does not match the setting of projector.";
         break;
     case 0x006:
-        OStr << "[IOSes0] Should not call __read_log_info() before specifying the right path.";
+        OStr << "[IOSes0] Should not call __read_log_info()/__write_log_info() before specifying the right path.";
         break;
     case 0x007:
         OStr << "[IOSes1] Called read position is out of range.";
@@ -31,6 +31,18 @@ string cdlu::DLU_error_log(int errornum) {
         break;
     case 0x00A:
         OStr << "[IOSes4] Need to input a shape like (height, weight).";
+        break;
+    case 0x00B:
+        OStr << "[IOSes5] The input data should be arranged like a 2-dim array.";
+        break;
+    case 0x00C:
+        OStr << "[IOSes6] Fail to convert a 2-dim array into C-data.";
+        break;
+    case 0x00D:
+        OStr << "[IOSes7] Could not write data before calling save().";
+        break;
+    case 0x00E:
+        OStr << "[IOSes8] Could not read data before calling load().";
         break;
     case 0x100:
         OStr << "[Core00] The ordinary error raised by python core.";

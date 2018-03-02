@@ -74,7 +74,20 @@ This is an API for reading the raw data from shot/receiver collections. Use the 
     print(dio.size()) # Get information: [shot number, receiver number, time step]
     p = dio.read([1, 30]) # Read the 1st and the 30th data collection from the corresponding shots
     print(p.shape, p.dtype)
-    print(x.size())
+    print(dio.size())
+    p.clear()
+```
+
+We also support you to write data as a `.BIN` file and a `.LOG` file. Noted that in writing mode, the use of `size()` is meaningless. Here is an example:
+
+```python
+    dio = du.DataIO() # Create the handle
+    dio.save(b'path',b'seismic') # Load source files
+    print(dio) # Show avaliable information
+    n_b = dio.write(data) # Return the number of written bytes
+    print(data.shape, data.dtype, n_b)
+    print(dio)
+    dio.clear()
 ```
 
 ##### Batch Reading
@@ -100,6 +113,9 @@ We could know that the C++ approach is much more efficient than the python appro
 For more instructions, you could tap `help(du)`. 
 
 ## Update Report
+
+### Version: 0.55 update report: @ 2018/3/2
+1. Add the 'load' & 'write' methods for 'DataIO' tool.
 
 ### Version: 0.55 update report: @ 2018/2/23
 1. Add the `batchRead` method for `DataIO` tool.

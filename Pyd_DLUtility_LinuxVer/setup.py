@@ -18,7 +18,7 @@ module1 = Extension(name = TARGET,
                     sources = ['{0}/DLUErrorLog.cpp'.format(BASE_SRC_DIR), '{0}/DLUSettings.cpp'.format(BASE_SRC_DIR), '{0}/dllmain.cpp'.format(BASE_SRC_DIR)])
 
 setup (name = 'dlUtility',
-       version = '0.5',
+       version = '0.6',
        description = 'deep learning utilities.',
        author = 'Yuchen Jin',
        author_email = 'cainmagi@gmail.com',

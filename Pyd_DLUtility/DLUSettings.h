@@ -88,10 +88,12 @@ namespace cdlu {
         virtual void clear();
         virtual PyObject *size() const;
         virtual bool load(string filename) = 0;
+        virtual bool save(string filename) = 0;
         virtual void close() = 0;
         virtual PyObject *read(size_t s_num); // Read a single data
         virtual PyObject *read(PyObject *s_numPyList); // Read a series of data, arranged by channels
         virtual PyObject *read(int batchNum, PyObject *batchShape); // Read random batch, arranged by batchNum
+        virtual int64_t write(PyObject *data); // Write a single/multiple data
     protected:
         std::ifstream __h;
         std::ofstream __oh;
@@ -113,18 +115,26 @@ namespace cdlu {
         void clear() override;
         PyObject *size() const override;
         bool load(string filename) override;
+        bool save(string filename) override;
         void close() override;
         PyObject *read(size_t s_num) override;
         PyObject *read(PyObject *s_numPyList) override;
         PyObject *read(int batchNum, PyObject *batchShape) override;
+        int64_t write(PyObject *data) override;
     private:
         string __filename; //用来拷贝构造和赋值的临时变量
         string __folderpath;
+        string __ofilename;
+        string __ofolderpath;
         size_t num_shot;
         size_t num_rec;
         size_t num_time;
+        size_t onum_shot;
+        size_t onum_rec;
+        size_t onum_time;
         bool __read_log_info();
-        string __full_path();
+        bool __write_log_info();
+        string __full_path(bool write=false);
     protected:
         std::ostream & __print(std::ostream & out) const override;
     };

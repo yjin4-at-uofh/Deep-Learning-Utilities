@@ -43,6 +43,9 @@ PyObject * cdlu::IO_Abstract::read(PyObject *s_numPyList) {
 PyObject * cdlu::IO_Abstract::read(int batchNum, PyObject *batchShape) {
     return nullptr;
 }
+int64_t cdlu::IO_Abstract::write(PyObject *data) {
+    return -1;
+}
 std::ostream & cdlu::IO_Abstract::__print(std::ostream & out) const {
     auto self_size = size();
     out << "<IOHandle - Abstract:" << endl;
@@ -63,9 +66,12 @@ std::ostream & cdlu::IO_Abstract::__print(std::ostream & out) const {
 }
 
 cdlu::IO_Sesmic::IO_Sesmic(void):
-    num_shot(0), num_rec(0), num_time(0), IO_Abstract() {
+    num_shot(0), num_rec(0), num_time(0), onum_shot(0), onum_rec(0), onum_time(0), 
+    IO_Abstract() {
     __filename.clear();
     __folderpath.clear();
+    __ofilename.clear();
+    __ofolderpath.clear();
 }
 cdlu::IO_Sesmic::~IO_Sesmic(void) {
 }
@@ -73,38 +79,63 @@ cdlu::IO_Sesmic::IO_Sesmic(const IO_Sesmic &ref):
     IO_Sesmic() {
     auto refname = ref.__filename;
     if (!refname.empty()) {
-        if (!ref.__folderpath.empty()) {
+        if (!ref.__folderpath.empty() && ref.__h.is_open()) {
             refname.insert(0, "/");
             refname.insert(0, ref.__folderpath);
         }
         load(refname);
     }
+    refname = ref.__ofilename;
+    if (!refname.empty() && ref.__oh.is_open()) {
+        if (!ref.__ofolderpath.empty()) {
+            refname.insert(0, "/");
+            refname.insert(0, ref.__ofolderpath);
+        }
+        save(refname);
+    }
 }
 cdlu::IO_Sesmic& cdlu::IO_Sesmic::operator=(const IO_Sesmic &ref) {
     if (this != &ref) {
         auto refname = ref.__filename;
-        if (!refname.empty()) {
+        if (!refname.empty() && ref.__h.is_open()) {
             if (!ref.__folderpath.empty()) {
                 refname.insert(0, "/");
                 refname.insert(0, ref.__folderpath);
             }
             load(refname);
         }
+        refname = ref.__ofilename;
+        if (!refname.empty() && ref.__oh.is_open()) {
+            if (!ref.__ofolderpath.empty()) {
+                refname.insert(0, "/");
+                refname.insert(0, ref.__ofolderpath);
+            }
+            save(refname);
+        }
     }
     return *this;
 }
 cdlu::IO_Sesmic::IO_Sesmic(IO_Sesmic &&ref) noexcept:
-    num_shot(ref.num_shot), num_rec(ref.num_rec), num_time(ref.num_time), IO_Abstract(std::move(ref)) {
+    num_shot(ref.num_shot), num_rec(ref.num_rec), num_time(ref.num_time),
+    onum_shot(ref.onum_shot), onum_rec(ref.onum_rec), onum_time(ref.onum_time),
+    IO_Abstract(std::move(ref)) {
     __filename = std::move(ref.__filename);
     __folderpath = std::move(ref.__folderpath);
+    __ofilename = std::move(ref.__ofilename);
+    __ofolderpath = std::move(ref.__ofolderpath);
 }
 cdlu::IO_Sesmic& cdlu::IO_Sesmic::operator=(IO_Sesmic &&ref) noexcept {
     if (this != &ref) {
         num_shot = ref.num_shot;
         num_rec = ref.num_rec;
         num_time = ref.num_time;
+        onum_shot = ref.onum_shot;
+        onum_rec = ref.onum_rec;
+        onum_time = ref.onum_time;
         __filename = std::move(ref.__filename);
         __folderpath = std::move(ref.__folderpath);
+        __ofilename = std::move(ref.__ofilename);
+        __ofolderpath = std::move(ref.__ofolderpath);
         __oh = std::move(ref.__oh);
         __h = std::move(ref.__h);
     }
@@ -114,16 +145,56 @@ std::ostream & cdlu::operator<<(std::ostream & out, const cdlu::IO_Sesmic & self
     return self_class.__print(out);
 }
 void cdlu::IO_Sesmic::clear() {
+    bool protectWrite = __oh.is_open();
     IO_Abstract::clear();
+    if (protectWrite) {
+        __write_log_info();
+    }
     __filename.clear();
     __folderpath.clear();
+    __ofilename.clear();
+    __ofolderpath.clear();
     num_shot = 0;
     num_rec = 0;
     num_time = 0;
+    onum_shot = 0;
+    onum_rec = 0;
+    onum_time = 0;
 }
 PyObject *cdlu::IO_Sesmic::size() const {
     PyObject *pysize = Py_BuildValue("[iii]", num_shot, num_rec, num_time);
     return pysize;
+}
+bool cdlu::IO_Sesmic::save(string filename) {
+    auto pathpos_A = filename.rfind('/');
+    auto pathpos_B = filename.rfind('\\');
+    if (pathpos_A != string::npos && pathpos_B != string::npos) {
+        pathpos_A = max(pathpos_A, pathpos_B);
+    }
+    else if (pathpos_B != string::npos) {
+        pathpos_A = pathpos_B;
+    }
+
+    if (pathpos_A != string::npos) {
+        __ofolderpath = filename.substr(0, pathpos_A);
+        __ofilename = filename.substr(pathpos_A + 1);
+    }
+    else {
+        __ofolderpath.clear();
+        __ofilename = filename;
+    }
+    string binname(std::move(__full_path(true)));
+    __oh.open(binname, std::ios::out | std::ofstream::binary);
+    if (__oh.fail()) {
+        cerr << cdlu::DLU_error_log(0x006) << ", fail to open: \"" << binname << "\"" << endl;
+        __oh.clear();
+        clear();
+        return false;
+    }
+    onum_rec = 0;
+    onum_shot = 0;
+    onum_time = 0;
+    return true;
 }
 bool cdlu::IO_Sesmic::load(string filename) {
     auto pathpos_A = filename.rfind('/');
@@ -147,13 +218,7 @@ bool cdlu::IO_Sesmic::load(string filename) {
         clear();
         return false;
     }
-    string binname(__filename);
-    binname.insert(0, "TDATA_");
-    binname.append(".BIN");
-    if (!__folderpath.empty()) {
-        binname.insert(0, "/");
-        binname.insert(0, __folderpath);
-    }
+    string binname(std::move(__full_path()));
     __h.open(binname, std::ifstream::binary);
     if (__h.fail()) {
         cerr << cdlu::DLU_error_log(0x006) << ", fail to open: \"" << binname << "\"" << endl;
@@ -167,6 +232,10 @@ void cdlu::IO_Sesmic::close() {
     clear();
 }
 PyObject *cdlu::IO_Sesmic::read(size_t s_num) {
+    if (!__h.is_open()) {
+        cerr << cdlu::DLU_error_log(0x00E) << endl;
+        Py_RETURN_NONE;
+    }
     if (PyArray_API == nullptr) {
         import_array();
     }
@@ -180,14 +249,15 @@ PyObject *cdlu::IO_Sesmic::read(size_t s_num) {
     __h.seekg(offset, std::ios::beg);
     auto out_data = new float[thisSize];
     __h.read(reinterpret_cast<char *>(out_data), thisSize * sizeof(float));
-    //size_t get = __h.gcount();
-    //printf( "%lld", get);
-    //printf("%d - %d\n", ((int*)out_data)[0], ((int*)out_data)[1]);
     npy_intp odims[] = {static_cast<npy_intp>(num_rec), static_cast<npy_intp>(num_time) };
     PyObject *PyResPic = PyArray_SimpleNewFromData(2, odims, NPY_FLOAT32, reinterpret_cast<void *>(out_data));
     return PyResPic;
 }
 PyObject *cdlu::IO_Sesmic::read(PyObject *s_numPyList) {
+    if (!__h.is_open()) {
+        cerr << cdlu::DLU_error_log(0x00E) << endl;
+        Py_RETURN_NONE;
+    }
     if (PyArray_API == nullptr) {
         import_array();
     }
@@ -230,6 +300,10 @@ PyObject *cdlu::IO_Sesmic::read(PyObject *s_numPyList) {
 }
 PyObject *cdlu::IO_Sesmic::read(int batchNum, PyObject *batchShape) {
     if (batchNum <= 0) {
+        Py_RETURN_NONE;
+    }
+    if (!__h.is_open()) {
+        cerr << cdlu::DLU_error_log(0x00E) << endl;
         Py_RETURN_NONE;
     }
     if (PyArray_API == nullptr) {
@@ -283,6 +357,81 @@ PyObject *cdlu::IO_Sesmic::read(int batchNum, PyObject *batchShape) {
     npy_intp odims[] = { static_cast<npy_intp>(batchNum), static_cast<npy_intp>(h), static_cast<npy_intp>(w), 1 };
     PyObject *PyResPic = PyArray_SimpleNewFromData(4, odims, NPY_FLOAT32, reinterpret_cast<void *>(newdata));
     return PyResPic;
+}
+int64_t cdlu::IO_Sesmic::write(PyObject *data) {
+    if (PyArray_API == nullptr) {
+        import_array();
+    }
+    if (!__oh.is_open()) {
+        cerr << cdlu::DLU_error_log(0x00D) << endl;
+        return -1;
+    }
+    auto dim_n = PyArray_NDIM((PyArrayObject *)data);
+    if (dim_n != 2) {
+        cerr << cdlu::DLU_error_log(0x00B) << endl;
+        return -1;
+    }
+    auto dims = PyArray_SHAPE((PyArrayObject *)data);
+    if (onum_rec > 0) {
+        if (onum_rec != dims[0]) {
+            cerr << cdlu::DLU_error_log(0x00C) << ", current receiver number " << static_cast<int>(dims[0]) << " does not correspond to the series: " << static_cast<int>(onum_rec) << endl;
+            return -1;
+        }
+    }
+    else {
+        onum_rec = dims[0];
+    }
+    if (onum_time > 0) {
+        if (onum_time != dims[1]) {
+            cerr << cdlu::DLU_error_log(0x00B) << ", current receiver time step " << static_cast<int>(dims[1]) << " does not correspond to the series: " << static_cast<int>(onum_time) << endl;
+            return -1;
+        }
+    }
+    else {
+        onum_time = dims[1];
+    }
+    npy_intp numels[1] = {dims[0]*dims[1]};
+    auto descr = PyArray_DescrFromType(NPY_FLOAT32);
+    auto n_data = PyArray_FromArray((PyArrayObject*)data, descr, NPY_ARRAY_C_CONTIGUOUS);
+    if (n_data == nullptr) {
+        cerr << cdlu::DLU_error_log(0x00C) << endl;
+        return -1;
+    }
+    auto writebytes = static_cast<size_t>(numels[0]) * sizeof(float);
+    __oh.write(reinterpret_cast<const char *>(PyArray_DATA((PyArrayObject*)n_data)), writebytes);
+    if (__oh.good()) {
+        onum_shot++;
+    }
+    else {
+        return -1;
+    }
+    PyArray_XDECREF((PyArrayObject*)n_data);
+    return writebytes;
+}
+bool cdlu::IO_Sesmic::__write_log_info() {
+    if (__ofilename.empty()) {
+        cerr << cdlu::DLU_error_log(0x006) << endl;
+        return false;
+    }
+    string logname(__ofilename);
+    logname.insert(0, "TDATA_");
+    logname.append(".LOG");
+    if (!__ofolderpath.empty()) {
+        logname.insert(0, "/");
+        logname.insert(0, __ofolderpath);
+    }
+    __oh.open(logname, std::ios::out);
+    if (__oh.fail()) {
+        cerr << cdlu::DLU_error_log(0x006) << ", fail to open: \"" << logname << "\"" << endl;
+        __oh.clear();
+        return false;
+    }
+    __oh << "Number of time steps: " << onum_time << endl;
+    __oh << "Number of shots: " << onum_shot << endl;
+    __oh << "Maximum number of receivers: " << onum_rec << endl;
+    __oh.clear();
+    __oh.close();
+    return true;
 }
 bool cdlu::IO_Sesmic::__read_log_info() {
     if (__filename.empty()){
@@ -339,17 +488,51 @@ bool cdlu::IO_Sesmic::__read_log_info() {
     __h.close();
     return true;
 }
+string cdlu::IO_Sesmic::__full_path(bool write) {
+    string binname;
+    if (write) {
+        binname.assign(__ofilename);
+    }
+    else{
+        binname.assign(__filename);
+    }
+    binname.insert(0, "TDATA_");
+    binname.append(".BIN");
+    if (write) {
+        if (!__ofolderpath.empty()) {
+            binname.insert(0, "/");
+            binname.insert(0, __ofolderpath);
+        }
+    }
+    else {
+        if (!__folderpath.empty()) {
+            binname.insert(0, "/");
+            binname.insert(0, __folderpath);
+        }
+    }
+    return binname;
+}
 std::ostream & cdlu::IO_Sesmic::__print(std::ostream & out) const {
     auto self_size = size();
     out << "<IOHandle - Sesmic:" << endl;
+    auto empty = true;
     if (__h.is_open()) {
-        out << "              folder=" << __folderpath << endl;
-        out << "                name=" << __filename << endl;
-        out << "       num. of shots=" << num_shot << endl;
-        out << "       num. of recv.=" << num_rec << endl;
-        out << "      num. of tstep.=" << num_time << endl;
+        empty = false;
+        out << "    |-i:          folder=" << __folderpath << endl;
+        out << "    |-i:            name=" << __filename << endl;
+        out << "    |-i:   num. of shots=" << num_shot << endl;
+        out << "    |-i:   num. of recv.=" << num_rec << endl;
+        out << "    |-i:  num. of tstep.=" << num_time << endl;
     }
-    else {
+    if (__oh.is_open()) {
+        empty = false;
+        out << "    |-o:          folder=" << __ofolderpath << endl;
+        out << "    |-o:            name=" << __ofilename << endl;
+        out << "    |-o:   num. of shots=" << onum_shot << endl;
+        out << "    |-o:   num. of recv.=" << onum_rec << endl;
+        out << "    |-o:  num. of tstep.=" << onum_time << endl;
+    }
+    if (empty) {
         out << "    empty" << endl;
     }
     out << ">";

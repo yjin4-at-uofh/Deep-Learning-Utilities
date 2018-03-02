@@ -93,6 +93,8 @@ Yuchen's Deep Learning Enhancing Tools - Readme
         process some data and do something on numpy arrays efficiently.
     For more instructions, you could tap help(dlUtilities). 
 ================================================================================
+V0.6 update report:
+    1. Add the 'load' & 'write' methods for 'DataIO' tool.
 V0.55 update report:
     1. Add the 'batchRead' method for 'DataIO' tool.
 V0.5 update report:
@@ -318,6 +320,57 @@ static PyObject* C_DLU_DtIO_Load(C_DLU_DataIO* Self, PyObject *args, PyObject *k
     }
 }
 
+static PyObject* C_DLU_DtIO_Save(C_DLU_DataIO* Self, PyObject *args, PyObject *kwargs) {
+    /* ∑‚◊∞(bool)save∫Ø ˝£¨ ‰»Î“¿¥ŒŒ™:
+    *   filepath [bytes->string]: Œƒº˛¬∑æ∂
+    *   mode     [bytes->string]: π§◊˜ƒ£ Ω
+    */
+    if (Self->_in_Handle) {
+        PyErr_SetString(PyExc_IOError, "Should close/clear the IO handle before saving a new file.");
+        return nullptr;
+    }
+    Py_buffer py_fpath = { 0 };
+    Py_buffer py_mode = { 0 };
+    static char *kwlist[] = { "filePath", "mode", nullptr };
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "y*|y*", kwlist, &py_fpath, &py_mode)) {
+        PyErr_SetString(PyExc_TypeError, "need 'filePath(bytes)', and optional argument 'mode(bytes)'");
+        return nullptr;
+    }
+    string in_fpath;
+    if (py_fpath.buf)
+        in_fpath.assign(reinterpret_cast<char *>(py_fpath.buf));
+    else {
+        PyErr_SetString(PyExc_TypeError, "Must specify a valid path.");
+        if (py_mode.buf)
+            PyBuffer_Release(&py_mode);
+        return nullptr;
+    }
+    PyBuffer_Release(&py_fpath);
+    string in_mode;
+    if (py_mode.buf)
+        in_mode.assign(reinterpret_cast<char *>(py_mode.buf));
+    else
+        in_mode.assign("seismic");
+    PyBuffer_Release(&py_mode);
+    if (in_mode.compare("seismic") == 0) {
+        Self->_in_Handle = new cdlu::IO_Sesmic;
+        auto success = Self->_in_Handle->save(in_fpath);
+        if (success) {
+            Py_RETURN_TRUE;
+        }
+        else {
+            PyErr_SetString(PyExc_IOError, "Unable to save the specified file, please check the DLU-Error for details.");
+            delete Self->_in_Handle;
+            Self->_in_Handle = nullptr;
+            return nullptr;
+        }
+    }
+    else {
+        PyErr_SetString(PyExc_TypeError, "The assigned mode is not valid.");
+        return nullptr;
+    }
+}
+
 static PyObject* C_DLU_DtIO_Read(C_DLU_DataIO* Self, PyObject *args, PyObject *kwargs) {
     /* ∑‚◊∞(ndarray)read∫Ø ˝£¨ ‰»Î“¿¥ŒŒ™:
     *   indices [int/tuple]: œ¬±Í/∂‡œ¬±Í
@@ -383,6 +436,40 @@ static PyObject* C_DLU_DtIO_BatchRead(C_DLU_DataIO* Self, PyObject *args, PyObje
     Py_RETURN_NONE;
 }
 
+static PyObject* C_DLU_DtIO_Write(C_DLU_DataIO* Self, PyObject *args, PyObject *kwargs) {
+    /* ∑‚◊∞(size_t)write∫Ø ˝£¨ ‰»Î“¿¥ŒŒ™:
+    *   indices [int/tuple]: œ¬±Í/∂‡œ¬±Í
+    */
+    if (PyArray_API == nullptr) {
+        import_array();
+    }
+    if (!Self->_in_Handle) {
+        PyErr_SetString(PyExc_IOError, "Should not write without saving file.");
+        return nullptr;
+    }
+    PyObject *data = nullptr;
+    static char *kwlist[] = { "data", nullptr };
+    if (!PyArg_ParseTupleAndKeywords(args, kwargs, "O|", kwlist, &data)) {
+        PyErr_SetString(PyExc_TypeError, "need 'data(ndarray)'");
+        return nullptr;
+    }
+    if (PyArray_Check(data)) {
+        auto res = Self->_in_Handle->write(data);
+        if (res == -1) {
+            PyErr_SetString(PyExc_NotImplementedError, "Meet errors while writing, or the current mode does not provide this function.");
+            return nullptr;
+        }
+        else {
+            return Py_BuildValue("i", res);
+        }
+    }
+    else {
+        PyErr_SetString(PyExc_TypeError, "need 'data(ndarray)'");
+        return nullptr;
+    }
+    Py_RETURN_NONE;
+}
+
 //◊¢“‚œ¬√Ê’‚¡©∫Ø ˝£¨Œ™ ≤√¥À¸√«≤ª–Ë“™Py_IN/DECREFƒÿ£ø“ÚŒ™Œ¥¥¥Ω®¡Ÿ ±±‰¡ø£¨“≤√ª”–
 // π”√–Œ»ÁNone’‚—˘µƒœ÷≥…∑µªÿ∂‘œÛ£°
 /*static PyObject* FreePyArray(PyArrayObject *PyArray) {
@@ -435,8 +522,12 @@ static PyMethodDef C_DLU_DtIO_MethodMembers[] =      //◊¢≤·¿‡µƒÀ˘”–≥…‘±∫Ø ˝Ω·ππ¡
     "Return the size of file in current handle. Sometimes it has other meanings and sometimes this\n method is not avaliable. It depends on the mode where the handle works." },
     { "load",               (PyCFunction)C_DLU_DtIO_Load,                 METH_VARARGS | METH_KEYWORDS, \
     "Load a resource file.\n - filePath: [bytes] a path which defines where the file stored.\n - mode: [bytes] the assigned mode of the IN handle (default: 'seismic')." },
+    { "save",               (PyCFunction)C_DLU_DtIO_Save,                 METH_VARARGS | METH_KEYWORDS, \
+    "Create a destination file for saving data.\n - filePath: [bytes] a path which defines where the file stored.\n - mode: [bytes] the assigned mode of the OUT handle (default: 'seismic')." },
     { "read",               (PyCFunction)C_DLU_DtIO_Read,                 METH_VARARGS | METH_KEYWORDS, \
     "Read a data chunk.\n - indices: [int/sequence] the indices (or index) of fetched data." },
+    { "write",              (PyCFunction)C_DLU_DtIO_Write,                METH_VARARGS | METH_KEYWORDS, \
+    "Write an array as a data chunk to the destination.\n - data: [ndarray] the data that needs to be written." },
     { "batchRead",          (PyCFunction)C_DLU_DtIO_BatchRead,            METH_VARARGS | METH_KEYWORDS, \
     "Use a random strategy to read a data batch.\n - batchNum: [int] the number of fetched sample data.\n - shape: [sequence] the shape of returned data." },
     { nullptr, nullptr, 0, nullptr }
