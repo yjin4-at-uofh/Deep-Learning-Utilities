@@ -114,7 +114,7 @@ For more instructions, you could tap `help(du)`.
 
 ## Update Report
 
-### Version: 0.55 update report: @ 2018/3/2
+### Version: 0.6 update report: @ 2018/3/2
 1. Add the 'load' & 'write' methods for 'DataIO' tool.
 
 ### Version: 0.55 update report: @ 2018/2/23
