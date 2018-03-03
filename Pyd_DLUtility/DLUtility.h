@@ -95,7 +95,7 @@ Yuchen's Deep Learning Enhancing Tools - Readme
     For more instructions, you could tap help(dlUtilities). 
 ================================================================================
 V0.6 update report:
-    1. Add the 'load' & 'write' methods for 'DataIO' tool.
+    1. Add the 'save' & 'write' methods for 'DataIO' tool.
 V0.55 update report:
     1. Add the 'batchRead' method for 'DataIO' tool.
 V0.5 update report:
