@@ -75,16 +75,16 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>D:\ProgramData\Anaconda3\envs\py35\include;D:\ProgramData\Anaconda3\envs\py35\Lib\site-packages\numpy\core\include;$(IncludePath)</IncludePath>
-    <LibraryPath>D:\ProgramData\Anaconda3\envs\py35\libs;D:\ProgramData\Anaconda3\envs\py35\Lib\site-packages\numpy\core\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>D:\ProgramData\Anaconda3\include;D:\ProgramData\Anaconda3\Lib\site-packages\numpy\core\include;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\ProgramData\Anaconda3\libs;D:\ProgramData\Anaconda3\Lib\site-packages\numpy\core\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>D:\ProgramData\Anaconda3\envs\py35\include;D:\ProgramData\Anaconda3\envs\py35\Lib\site-packages\numpy\core\include;$(IncludePath)</IncludePath>
-    <LibraryPath>D:\ProgramData\Anaconda3\envs\py35\libs;D:\ProgramData\Anaconda3\envs\py35\Lib\site-packages\numpy\core\lib;$(LibraryPath)</LibraryPath>
+    <IncludePath>D:\ProgramData\Anaconda3\include;D:\ProgramData\Anaconda3\Lib\site-packages\numpy\core\include;$(IncludePath)</IncludePath>
+    <LibraryPath>D:\ProgramData\Anaconda3\libs;D:\ProgramData\Anaconda3\Lib\site-packages\numpy\core\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -111,7 +111,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <OutputFile>$(OutDir)dlUtility.pyd</OutputFile>
-      <AdditionalDependencies>python35.lib;python3.lib;npymath.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>python36.lib;python3.lib;npymath.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
@@ -147,7 +147,7 @@
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <OutputFile>$(OutDir)dlUtility.pyd</OutputFile>
-      <AdditionalDependencies>python35.lib;python3.lib;npymath.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>python36.lib;python3.lib;npymath.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

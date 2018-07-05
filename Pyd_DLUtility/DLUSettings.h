@@ -2,12 +2,20 @@
 #define DLUSETTINGS_H_INCLUDED
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-#define DLUSETTINGS_CURRENT_VERSION "0.55"
+#define DLUSETTINGS_CURRENT_VERSION "0.7"
+
+#define FWDCURVES180602_NUMPOINTS 92
+#define FWDCURVES180602_DATATYPE NPY_FLOAT64
+
+#ifndef max
+    #define max(a,b)            (((a) > (b)) ? (a) : (b))
+#endif
 
 #include <unordered_map>
 #include <fstream>
 #include <sstream>
 #include <random>
+#include <memory>
 #include <Python.h>
 #include <numpy/arrayobject.h>
 
@@ -101,7 +109,7 @@ namespace cdlu {
         virtual std::ostream & __print(std::ostream & out) const;
     };
 
-    class IO_Sesmic : public IO_Abstract { /**/
+    class IO_Sesmic : public IO_Abstract {
     public:
         IO_Sesmic(void);                                      //构造函数
                                                               // 以下部分就是传说中的三五法则，定义其中之一就必须全部手动定义
@@ -136,6 +144,37 @@ namespace cdlu {
         bool __write_log_info();
         string __full_path(bool write=false);
     protected:
+        std::ostream & __print(std::ostream & out) const override;
+    };
+
+    class IO_FWM180602 : public IO_Abstract {
+    public:
+        IO_FWM180602(void);                                         //构造函数
+                                                                    // 以下部分就是传说中的三五法则，定义其中之一就必须全部手动定义
+        ~IO_FWM180602(void);                                        //析构函数
+        IO_FWM180602(const IO_FWM180602 &ref);                      //拷贝构造函数
+        IO_FWM180602& operator=(const IO_FWM180602 &ref);           //拷贝赋值函数
+        IO_FWM180602(IO_FWM180602 &&ref) noexcept;                  //移动构造函数
+        IO_FWM180602& operator=(IO_FWM180602 &&ref) noexcept;       //移动赋值函数
+                                                                    // 运算符重载
+        friend std::ostream & operator<<(std::ostream & out, const IO_FWM180602 & self_class); // 用于显示
+        void clear() override;
+        PyObject *size() const override;
+        bool load(string filename) override;
+        void close() override;
+        PyObject *read(size_t s_num) override;
+        PyObject *read(PyObject *s_numPyList) override;
+        PyObject *read(int batchNum, PyObject *batchShape) override;
+        bool save(string filename) override;
+    private:
+        string __filename; //用来拷贝构造和赋值的临时变量
+        size_t evalSize; // The number of samples
+        size_t num_m;    // The length of the geophysical data.
+        std::streampos i_base;
+        std::streampos o_base;
+    protected:
+        typedef double DataType;
+        std::ifstream __h_d; // Dual read file handle
         std::ostream & __print(std::ostream & out) const override;
     };
 }

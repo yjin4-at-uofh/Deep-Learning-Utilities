@@ -94,6 +94,11 @@ Yuchen's Deep Learning Enhancing Tools - Readme
         process some data and do something on numpy arrays efficiently.
     For more instructions, you could tap help(dlUtilities). 
 ================================================================================
+V0.7 update report:
+    1. Fix some bugs that may cause memory leaking.
+    2. Improve the code quality by using try blocks to tackle errors.
+    3. Add the mode 'fwm180602' to the 'DataIO.load()'.
+    4. Arrange the format of DLUError.
 V0.6 update report:
     1. Add the 'save' & 'write' methods for 'DataIO' tool.
 V0.55 update report:
@@ -217,6 +222,9 @@ static PyObject* C_DLU_Proj_Action(C_DLU_Projector* Self, PyObject *args, PyObje
     }
     bool b_inversed = (inversed != 0);
     auto res = Self->_in_Handle->action(inpic, b_inversed);
+    if (res == nullptr) {
+        PyErr_SetString(PyExc_RuntimeError, "fail to execute action, please check the DLUError log.");
+    }
     return res;
 }
 
@@ -304,19 +312,22 @@ static PyObject* C_DLU_DtIO_Load(C_DLU_DataIO* Self, PyObject *args, PyObject *k
     PyBuffer_Release(&py_mode);
     if (in_mode.compare("seismic") == 0) {
         Self->_in_Handle = new cdlu::IO_Sesmic;
-        auto success = Self->_in_Handle->load(in_fpath);
-        if (success) {
-            Py_RETURN_TRUE;
-        }
-        else {
-            PyErr_SetString(PyExc_IOError, "Unable to load the specified file, please check the DLU-Error for details.");
-            delete Self->_in_Handle;
-            Self->_in_Handle = nullptr;
-            return nullptr;
-        }
+    }
+    else if (in_mode.compare("fwm180602") == 0) {
+        Self->_in_Handle = new cdlu::IO_FWM180602;
     }
     else {
         PyErr_SetString(PyExc_TypeError, "The assigned mode is not valid.");
+        return nullptr;
+    }
+    auto success = Self->_in_Handle->load(in_fpath);
+    if (success) {
+        Py_RETURN_TRUE;
+    }
+    else {
+        PyErr_SetString(PyExc_IOError, "Unable to load the specified file, please check the DLU-Error for details.");
+        delete Self->_in_Handle;
+        Self->_in_Handle = nullptr;
         return nullptr;
     }
 }
@@ -355,19 +366,19 @@ static PyObject* C_DLU_DtIO_Save(C_DLU_DataIO* Self, PyObject *args, PyObject *k
     PyBuffer_Release(&py_mode);
     if (in_mode.compare("seismic") == 0) {
         Self->_in_Handle = new cdlu::IO_Sesmic;
-        auto success = Self->_in_Handle->save(in_fpath);
-        if (success) {
-            Py_RETURN_TRUE;
-        }
-        else {
-            PyErr_SetString(PyExc_IOError, "Unable to save the specified file, please check the DLU-Error for details.");
-            delete Self->_in_Handle;
-            Self->_in_Handle = nullptr;
-            return nullptr;
-        }
     }
     else {
         PyErr_SetString(PyExc_TypeError, "The assigned mode is not valid.");
+        return nullptr;
+    }
+    auto success = Self->_in_Handle->save(in_fpath);
+    if (success) {
+        Py_RETURN_TRUE;
+    }
+    else {
+        PyErr_SetString(PyExc_IOError, "Unable to save the specified file, please check the DLU-Error for details.");
+        delete Self->_in_Handle;
+        Self->_in_Handle = nullptr;
         return nullptr;
     }
 }
@@ -390,7 +401,7 @@ static PyObject* C_DLU_DtIO_Read(C_DLU_DataIO* Self, PyObject *args, PyObject *k
         auto index = PyLong_AsLong(indices);
         auto res = Self->_in_Handle->read(index);
         if (!res) {
-            PyErr_SetString(PyExc_NotImplementedError, "The current mode does not provide this function.");
+            PyErr_SetString(PyExc_NotImplementedError, "Meet a fatal error, or the current mode does not provide this function.");
             return nullptr;
         }
         else {
@@ -400,7 +411,7 @@ static PyObject* C_DLU_DtIO_Read(C_DLU_DataIO* Self, PyObject *args, PyObject *k
     else {
         auto res = Self->_in_Handle->read(indices);
         if (!res) {
-            PyErr_SetString(PyExc_NotImplementedError, "The current mode does not provide this function.");
+            PyErr_SetString(PyExc_NotImplementedError, "Meet a fatal error, or the current mode does not provide this function.");
             return nullptr;
         }
         else {
@@ -428,7 +439,7 @@ static PyObject* C_DLU_DtIO_BatchRead(C_DLU_DataIO* Self, PyObject *args, PyObje
     }
     auto res = Self->_in_Handle->read(batchnum, shape);
     if (!res) {
-        PyErr_SetString(PyExc_NotImplementedError, "The current mode does not provide this function.");
+        PyErr_SetString(PyExc_NotImplementedError, "Meet a fatal error, or the current mode does not provide this function.");
         return nullptr;
     }
     else {

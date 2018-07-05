@@ -78,8 +78,8 @@ cdlu::IO_Sesmic::~IO_Sesmic(void) {
 cdlu::IO_Sesmic::IO_Sesmic(const IO_Sesmic &ref):
     IO_Sesmic() {
     auto refname = ref.__filename;
-    if (!refname.empty()) {
-        if (!ref.__folderpath.empty() && ref.__h.is_open()) {
+    if (!refname.empty() && ref.__h.is_open()) {
+        if (!ref.__folderpath.empty()) {
             refname.insert(0, "/");
             refname.insert(0, ref.__folderpath);
         }
@@ -234,14 +234,14 @@ void cdlu::IO_Sesmic::close() {
 PyObject *cdlu::IO_Sesmic::read(size_t s_num) {
     if (!__h.is_open()) {
         cerr << cdlu::DLU_error_log(0x00E) << endl;
-        Py_RETURN_NONE;
+        return nullptr;
     }
     if (PyArray_API == nullptr) {
         import_array();
     }
     if (s_num >= num_shot) {
         cerr << cdlu::DLU_error_log(0x007) << ", max position=" << num_shot-1 << endl;
-        Py_RETURN_NONE;
+        return nullptr;
     }
     auto thisSize = num_rec * num_time;
     auto offset = s_num * thisSize * sizeof(float);
@@ -251,43 +251,49 @@ PyObject *cdlu::IO_Sesmic::read(size_t s_num) {
     __h.read(reinterpret_cast<char *>(out_data), thisSize * sizeof(float));
     npy_intp odims[] = {static_cast<npy_intp>(num_rec), static_cast<npy_intp>(num_time) };
     PyObject *PyResPic = PyArray_SimpleNewFromData(2, odims, NPY_FLOAT32, reinterpret_cast<void *>(out_data));
+    PyArray_ENABLEFLAGS((PyArrayObject *)PyResPic, NPY_ARRAY_OWNDATA);
     return PyResPic;
 }
 PyObject *cdlu::IO_Sesmic::read(PyObject *s_numPyList) {
     if (!__h.is_open()) {
         cerr << cdlu::DLU_error_log(0x00E) << endl;
-        Py_RETURN_NONE;
+        return nullptr;
     }
     if (PyArray_API == nullptr) {
         import_array();
     }
     auto ochannels = PySequence_Size(s_numPyList);
-    if (ochannels == -1) {
-        cerr << cdlu::DLU_error_log(0x008) << endl;
-        Py_RETURN_NONE;
+    auto s_numPyList_F = PySequence_Fast(s_numPyList, "Fail to get access to the index list.");
+    try {
+        if (ochannels == -1) {
+            throw 0x008;
+        }
+        auto longcheck = 0;
+        for (decltype(ochannels) i = 0; i < ochannels; i++) {
+            auto f_obj = PySequence_Fast_GET_ITEM(s_numPyList, i);
+            if (!f_obj) {
+                throw 0x009;
+            }
+            auto f_pos = PyLong_AsLongAndOverflow(f_obj, &longcheck);
+            if (longcheck) {
+                throw 0x009;
+            }
+            else if (f_pos >= num_shot) {
+                cerr << "Error occurrs at channel " << i << ", max position=" << num_shot - 1 << endl;
+                throw 0x007;
+            }
+        }
     }
-    auto longcheck = 0;
-    for (decltype(ochannels) i = 0; i < ochannels; i++) {
-        auto f_obj = PySequence_GetItem(s_numPyList, i);
-        if (!f_obj) {
-            cerr << cdlu::DLU_error_log(0x009) << endl;
-            Py_RETURN_NONE;
-        }
-        auto f_pos = PyLong_AsLongAndOverflow(f_obj, &longcheck);
-        if (longcheck) {
-            cerr << cdlu::DLU_error_log(0x009) << endl;
-            Py_RETURN_NONE;
-        }
-        else if (f_pos >= num_shot) {
-            cerr << cdlu::DLU_error_log(0x007) << ", occurring at channel " << i << ", max position=" << num_shot - 1 << endl;
-            Py_RETURN_NONE;
-        }
+    catch (int errornum) {
+        cerr << cdlu::DLU_error_log(errornum) << endl;
+        Py_XDECREF(s_numPyList_F);
+        return nullptr;
     }
     auto sliceSize = num_rec * num_time;
     auto dataSize = sliceSize * ochannels;
     auto out_data = new float[dataSize];
     for (decltype(ochannels) i = 0; i < ochannels; i++) {
-        auto f_pos = PyLong_AsLong(PySequence_GetItem(s_numPyList, i)) * sliceSize * sizeof(float);
+        auto f_pos = PyLong_AsLong(PySequence_Fast_GET_ITEM(s_numPyList, i)) * sliceSize * sizeof(float);
         __h.clear();
         __h.seekg(f_pos, std::ios::beg);
         for (auto *p = out_data+i; p < out_data + dataSize; p += ochannels) {
@@ -296,6 +302,8 @@ PyObject *cdlu::IO_Sesmic::read(PyObject *s_numPyList) {
     }
     npy_intp odims[] = { static_cast<npy_intp>(num_rec), static_cast<npy_intp>(num_time), static_cast<npy_intp>(ochannels) };
     PyObject *PyResPic = PyArray_SimpleNewFromData(3, odims, NPY_FLOAT32, reinterpret_cast<void *>(out_data));
+    PyArray_ENABLEFLAGS((PyArrayObject *)PyResPic, NPY_ARRAY_OWNDATA);
+    Py_XDECREF(s_numPyList_F);
     return PyResPic;
 }
 PyObject *cdlu::IO_Sesmic::read(int batchNum, PyObject *batchShape) {
@@ -310,33 +318,38 @@ PyObject *cdlu::IO_Sesmic::read(int batchNum, PyObject *batchShape) {
         import_array();
     }
     auto ochannels = PySequence_Size(batchShape);
-    if (ochannels != 2) {
-        cerr << cdlu::DLU_error_log(0x00A) << endl;
+    auto batchShape_F = PySequence_Fast(batchShape, "Fail to get access to the (H, W).");
+    try {
+        if (ochannels != 2) {
+            throw 0x00A;
+        }
+        auto longcheck = 0;
+        for (decltype(ochannels) i = 0; i < ochannels; i++) {
+            auto f_obj = PySequence_Fast_GET_ITEM(batchShape_F, i);
+            if (!f_obj) {
+                throw 0x009; 
+            }
+            auto f_pos = PyLong_AsLongAndOverflow(f_obj, &longcheck);
+            if (longcheck) {
+                throw 0x009;
+            }
+            else if (i == 0 && f_pos >= num_rec) {
+                cerr << "Error occurrs at height= " << static_cast<int>(f_pos) << ", max height=" << num_rec << endl;
+                throw 0x007;
+            }
+            else if (i == 1 && f_pos >= num_time) {
+                cerr << "Error occurrs at width= " << static_cast<int>(f_pos) << ", max width=" << num_time << endl;
+                throw 0x007;
+            }
+        }
+    }
+    catch (int errornum) {
+        cerr << cdlu::DLU_error_log(errornum) << endl;
+        Py_XDECREF(batchShape_F);
         Py_RETURN_NONE;
     }
-    auto longcheck = 0;
-    for (decltype(ochannels) i = 0; i < ochannels; i++) {
-        auto f_obj = PySequence_GetItem(batchShape, i);
-        if (!f_obj) {
-            cerr << cdlu::DLU_error_log(0x009) << endl;
-            Py_RETURN_NONE;
-        }
-        auto f_pos = PyLong_AsLongAndOverflow(f_obj, &longcheck);
-        if (longcheck) {
-            cerr << cdlu::DLU_error_log(0x009) << endl;
-            Py_RETURN_NONE;
-        }
-        else if (i == 0 && f_pos >= num_rec) {
-            cerr << cdlu::DLU_error_log(0x007) << ", occurring at height= " << static_cast<int>(f_pos) << ", max height=" << num_rec << endl;
-            Py_RETURN_NONE;
-        }
-        else if (i == 1 && f_pos >= num_time) {
-            cerr << cdlu::DLU_error_log(0x007) << ", occurring at width= " << static_cast<int>(f_pos) << ", max width=" << num_time << endl;
-            Py_RETURN_NONE;
-        }
-    }
-    auto h = PyLong_AsLong(PySequence_GetItem(batchShape, 0));
-    auto w = PyLong_AsLong(PySequence_GetItem(batchShape, 1));
+    auto h = PyLong_AsLong(PySequence_Fast_GET_ITEM(batchShape_F, 0));
+    auto w = PyLong_AsLong(PySequence_Fast_GET_ITEM(batchShape_F, 1));
     auto offset_fig = num_time * num_rec;
     auto offset_row = num_time;
     std::default_random_engine rd_e(rand());
@@ -356,39 +369,47 @@ PyObject *cdlu::IO_Sesmic::read(int batchNum, PyObject *batchShape) {
     }
     npy_intp odims[] = { static_cast<npy_intp>(batchNum), static_cast<npy_intp>(h), static_cast<npy_intp>(w), 1 };
     PyObject *PyResPic = PyArray_SimpleNewFromData(4, odims, NPY_FLOAT32, reinterpret_cast<void *>(newdata));
+    PyArray_ENABLEFLAGS((PyArrayObject *)PyResPic, NPY_ARRAY_OWNDATA);
+    Py_XDECREF(batchShape_F);
     return PyResPic;
 }
 int64_t cdlu::IO_Sesmic::write(PyObject *data) {
     if (PyArray_API == nullptr) {
         import_array();
     }
-    if (!__oh.is_open()) {
-        cerr << cdlu::DLU_error_log(0x00D) << endl;
-        return -1;
-    }
-    auto dim_n = PyArray_NDIM((PyArrayObject *)data);
-    if (dim_n != 2) {
-        cerr << cdlu::DLU_error_log(0x00B) << endl;
-        return -1;
-    }
-    auto dims = PyArray_SHAPE((PyArrayObject *)data);
-    if (onum_rec > 0) {
-        if (onum_rec != dims[0]) {
-            cerr << cdlu::DLU_error_log(0x00C) << ", current receiver number " << static_cast<int>(dims[0]) << " does not correspond to the series: " << static_cast<int>(onum_rec) << endl;
-            return -1;
+    int dim_n = 0;
+    npy_intp *dims = nullptr;
+    try {
+        if (!__oh.is_open()) {
+            throw 0x00D;
+        }
+        dim_n = PyArray_NDIM((PyArrayObject *)data);
+        if (dim_n != 2) {
+            throw 0x00B;
+        }
+        dims = PyArray_SHAPE((PyArrayObject *)data);
+        if (onum_rec > 0) {
+            if (onum_rec != dims[0]) {
+                cerr << "Current receiver number " << static_cast<int>(dims[0]) << " does not correspond to the series: " << static_cast<int>(onum_rec) << endl;
+                throw 0x00C;
+            }
+        }
+        else {
+            onum_rec = dims[0];
+        }
+        if (onum_time > 0) {
+            if (onum_time != dims[1]) {
+                cerr << "Current receiver time step " << static_cast<int>(dims[1]) << " does not correspond to the series: " << static_cast<int>(onum_time) << endl;
+                throw 0x00B;
+            }
+        }
+        else {
+            onum_time = dims[1];
         }
     }
-    else {
-        onum_rec = dims[0];
-    }
-    if (onum_time > 0) {
-        if (onum_time != dims[1]) {
-            cerr << cdlu::DLU_error_log(0x00B) << ", current receiver time step " << static_cast<int>(dims[1]) << " does not correspond to the series: " << static_cast<int>(onum_time) << endl;
-            return -1;
-        }
-    }
-    else {
-        onum_time = dims[1];
+    catch (int errornum) {
+        cerr << cdlu::DLU_error_log(errornum) << endl;
+        return -1;
     }
     npy_intp numels[1] = {dims[0]*dims[1]};
     auto descr = PyArray_DescrFromType(NPY_FLOAT32);
@@ -539,6 +560,379 @@ std::ostream & cdlu::IO_Sesmic::__print(std::ostream & out) const {
     return out;
 }
 
+cdlu::IO_FWM180602::IO_FWM180602(void) :
+    evalSize(0), num_m(0), i_base(0), o_base(0), IO_Abstract() {
+    __filename.clear();
+    __h_d.clear();
+}
+cdlu::IO_FWM180602::~IO_FWM180602(void) {
+    if (__h_d.is_open()) {
+        __h_d.clear();
+        __h_d.close();
+    }
+}
+cdlu::IO_FWM180602::IO_FWM180602(const IO_FWM180602 &ref) :
+    IO_FWM180602() {
+    auto refname = ref.__filename;
+    if (!refname.empty()) {
+        if (!refname.empty() && ref.__h.is_open()) {
+            load(refname);
+        } 
+    }
+}
+cdlu::IO_FWM180602& cdlu::IO_FWM180602::operator=(const IO_FWM180602 &ref) {
+    if (this != &ref) {
+        auto refname = ref.__filename;
+        if (!refname.empty()) {
+            if (!refname.empty() && ref.__h.is_open()) {
+                load(refname);
+            }
+        }
+    }
+    return *this;
+}
+cdlu::IO_FWM180602::IO_FWM180602(IO_FWM180602 &&ref) noexcept:
+evalSize(ref.evalSize), num_m(ref.num_m), i_base(ref.i_base), o_base(ref.o_base), IO_Abstract(std::move(ref)) {
+    __filename = std::move(ref.__filename);
+    __h_d = std::move(ref.__h_d);
+}
+cdlu::IO_FWM180602& cdlu::IO_FWM180602::operator=(IO_FWM180602 &&ref) noexcept {
+    if (this != &ref) {
+        evalSize = ref.evalSize;
+        num_m = ref.num_m;
+        i_base = ref.i_base;
+        o_base = ref.o_base;
+        __filename = std::move(ref.__filename);
+        __oh = std::move(ref.__oh);
+        __h = std::move(ref.__h);
+        __h_d = std::move(ref.__h_d);
+    }
+    return *this;
+}
+std::ostream & cdlu::operator<<(std::ostream & out, const cdlu::IO_FWM180602 & self_class) {
+    return self_class.__print(out);
+}
+void cdlu::IO_FWM180602::clear() {
+    IO_Abstract::clear();
+    __filename.clear();
+    evalSize = 0;
+    num_m = 0;
+    i_base = 0;
+    o_base = 0;
+    if (__h_d.is_open()) {
+        __h_d.clear();
+        __h_d.close();
+    }
+}
+PyObject *cdlu::IO_FWM180602::size() const {
+    PyObject *pysize = Py_BuildValue("[ii]", evalSize, num_m);
+    return pysize;
+}
+bool cdlu::IO_FWM180602::load(string filename) {
+    __filename = filename;
+    auto para_filename = filename + ".fwdp";
+    auto resp_filename = filename + ".fwdr";
+    try {
+        decltype(evalSize) checkEvalSize = 0;
+        decltype(num_m) checkNumM = 0;
+        __h.open(para_filename, std::ifstream::in | std::ifstream::binary);
+        if (!__h.good()) {
+            cerr << "Fail to open: \"" << para_filename << "\"" << endl;
+            throw 0x103;
+        }
+        __h_d.open(resp_filename, std::ifstream::in | std::ifstream::binary);
+        if (!__h.good()) {
+            cerr << "Fail to open: \"" << resp_filename << "\"" << endl;
+            throw 0x103;
+        }
+        __h.read(reinterpret_cast<char *>(&evalSize), sizeof(decltype(evalSize)));
+        __h.read(reinterpret_cast<char *>(&num_m), sizeof(decltype(num_m)));
+        __h_d.read(reinterpret_cast<char *>(&checkEvalSize), sizeof(decltype(checkEvalSize)));
+        __h_d.read(reinterpret_cast<char *>(&checkNumM), sizeof(decltype(checkNumM)));
+        if (!__h.good() || !__h_d.good())
+            throw 0x105;
+        if (evalSize != checkEvalSize || num_m != checkNumM)
+            throw 0x00F;
+        i_base = __h.tellg() + static_cast<decltype(i_base)>(num_m * (2 * sizeof(DataType) + sizeof(size_t)));
+        o_base = __h_d.tellg();
+    }
+    catch (int errornum) {
+        cerr << cdlu::DLU_error_log(errornum) << endl;
+        clear();
+        return false;
+    }
+    return true;
+}
+void cdlu::IO_FWM180602::close() {
+    clear();
+}
+PyObject *cdlu::IO_FWM180602::read(size_t s_num) {
+    if (!__h.is_open() || !__h_d.is_open()) {
+        cerr << cdlu::DLU_error_log(0x00E) << endl;
+        return nullptr;
+    }
+    if (PyArray_API == nullptr) {
+        import_array();
+    }
+    PyObject *PyRes_i = nullptr;
+    PyObject *PyRes_o = nullptr;
+    DataType *out_data_i = nullptr;
+    DataType *out_data_o = nullptr;
+    try {
+        if (s_num >= evalSize) {
+            cerr << "Max position=" << evalSize - 1 << endl;
+            throw 0x007;
+        }
+        auto offset_i = i_base + static_cast<decltype(i_base)>(s_num * num_m * sizeof(DataType));
+        auto offset_o = o_base + static_cast<decltype(o_base)>(s_num * FWDCURVES180602_NUMPOINTS * sizeof(DataType));
+        // Build the data from the geophysical database.
+        __h.clear();
+        __h.seekg(offset_i, std::ios::beg);
+        out_data_i = new DataType[num_m];
+        __h.read(reinterpret_cast<char *>(out_data_i), num_m * sizeof(DataType));
+        if (!__h.good())
+            throw 0x105;
+        npy_intp odims_i[] = { 1, static_cast<npy_intp>(num_m) };
+        PyRes_i = PyArray_SimpleNewFromData(2, odims_i, FWDCURVES180602_DATATYPE, reinterpret_cast<void *>(out_data_i));
+        if (PyRes_i == nullptr) {
+            throw 0x209;
+        }
+        PyArray_ENABLEFLAGS((PyArrayObject *)PyRes_i, NPY_ARRAY_OWNDATA);
+        // Build the data from the response database.
+        __h_d.clear();
+        __h_d.seekg(offset_o, std::ios::beg);
+        out_data_o = new DataType[FWDCURVES180602_NUMPOINTS];
+        __h_d.read(reinterpret_cast<char *>(out_data_o), FWDCURVES180602_NUMPOINTS * sizeof(DataType));
+        if (!__h_d.good())
+            throw 0x105;
+        npy_intp odims_o[] = { 1, FWDCURVES180602_NUMPOINTS };
+        PyRes_o = PyArray_SimpleNewFromData(2, odims_o, FWDCURVES180602_DATATYPE, reinterpret_cast<void *>(out_data_o));
+        if (PyRes_o == nullptr) {
+            throw 0x209;
+        }
+        PyArray_ENABLEFLAGS((PyArrayObject *)PyRes_o, NPY_ARRAY_OWNDATA);
+    }
+    catch (int errornum) {
+        cerr << cdlu::DLU_error_log(errornum) << endl;
+        if (PyRes_i){
+            Py_XDECREF(PyRes_i);
+        }
+        else if (out_data_i){
+            delete[] out_data_i;
+        }
+        if (PyRes_o) {
+            Py_XDECREF(PyRes_o);
+        }
+        else if (out_data_o) {
+            delete[] out_data_o;
+        }
+        __h.clear();
+        __h_d.clear();
+        return nullptr;
+    }
+    return Py_BuildValue("(OO)", PyRes_i, PyRes_o);
+}
+PyObject *cdlu::IO_FWM180602::read(PyObject *s_numPyList) {
+    if (!__h.is_open() || !__h_d.is_open()) {
+        cerr << cdlu::DLU_error_log(0x00E) << endl;
+        return nullptr;
+    }
+    if (PyArray_API == nullptr) {
+        import_array();
+    }
+    Py_ssize_t ochannels;
+    auto s_numPyList_F = PySequence_Fast(s_numPyList, "Fail to get access to the index list.");
+    try {
+        ochannels = PySequence_Size(s_numPyList);
+        if (ochannels == -1) {
+            throw 0x008;
+        }
+        auto longcheck = 0;
+        for (decltype(ochannels) i = 0; i < ochannels; i++) {
+            auto f_obj = PySequence_Fast_GET_ITEM(s_numPyList_F, i);
+            if (!f_obj) {
+                throw 0x009;
+            }
+            auto f_pos = PyLong_AsLongAndOverflow(f_obj, &longcheck);
+            if (longcheck) {
+                throw 0x009;
+            }
+            else if (f_pos >= evalSize) {
+                cerr << "Error occurrs at channel " << i << ", max position=" << evalSize - 1 << endl;
+                throw 0x007;
+            }
+        }
+    }
+    catch (int errornum) {
+        cerr << cdlu::DLU_error_log(errornum) << endl;
+        Py_XDECREF(s_numPyList_F);
+        return nullptr;
+    }
+    PyObject *PyRes_i = nullptr;
+    PyObject *PyRes_o = nullptr;
+    DataType *out_data_i = nullptr;
+    DataType *out_data_o = nullptr;
+    try {
+        // Build the data from the geophysical database.
+        out_data_i = new DataType[num_m*ochannels];
+        for (decltype(ochannels) i = 0; i < ochannels; i++) {
+            auto cur_data = out_data_i + i * num_m;
+            auto f_pos = i_base + static_cast<decltype(i_base)>(PyLong_AsLong(PySequence_Fast_GET_ITEM(s_numPyList_F, i)) * num_m * sizeof(DataType));
+            __h.clear();
+            __h.seekg(f_pos, std::ios::beg);
+            __h.read(reinterpret_cast<char *>(cur_data), num_m * sizeof(DataType));
+            if (!__h.good())
+                throw 0x105;
+        }
+        npy_intp odims_i[] = { static_cast<npy_intp>(ochannels), static_cast<npy_intp>(num_m) };
+        PyRes_i = PyArray_SimpleNewFromData(2, odims_i, FWDCURVES180602_DATATYPE, reinterpret_cast<void *>(out_data_i));
+        if (PyRes_i == nullptr) {
+            throw 0x209;
+        }
+        PyArray_ENABLEFLAGS((PyArrayObject *)PyRes_i, NPY_ARRAY_OWNDATA);
+        // Build the data from the response database.
+        out_data_o = new DataType[FWDCURVES180602_NUMPOINTS*ochannels];
+        for (decltype(ochannels) i = 0; i < ochannels; i++) {
+            auto cur_data = out_data_o + i * FWDCURVES180602_NUMPOINTS;
+            auto f_pos = o_base + static_cast<decltype(o_base)>(PyLong_AsLong(PySequence_Fast_GET_ITEM(s_numPyList_F, i)) * FWDCURVES180602_NUMPOINTS * sizeof(DataType));
+            __h_d.clear();
+            __h_d.seekg(f_pos, std::ios::beg);
+            __h_d.read(reinterpret_cast<char *>(cur_data), FWDCURVES180602_NUMPOINTS * sizeof(DataType));
+            if (!__h_d.good())
+                throw 0x105;
+        }
+        npy_intp odims_o[] = { static_cast<npy_intp>(ochannels), FWDCURVES180602_NUMPOINTS };
+        PyRes_o = PyArray_SimpleNewFromData(2, odims_o, FWDCURVES180602_DATATYPE, reinterpret_cast<void *>(out_data_o));
+        if (PyRes_o == nullptr) {
+            throw 0x209;
+        }
+        PyArray_ENABLEFLAGS((PyArrayObject *)PyRes_o, NPY_ARRAY_OWNDATA);
+    }
+    catch (int errornum) {
+        cerr << cdlu::DLU_error_log(errornum) << endl;
+        if (PyRes_i) {
+            Py_XDECREF(PyRes_i);
+        }
+        else if (out_data_i) {
+            delete[] out_data_i;
+        }
+        if (PyRes_o) {
+            Py_XDECREF(PyRes_o);
+        }
+        else if (out_data_o) {
+            delete[] out_data_o;
+        }
+        Py_XDECREF(s_numPyList_F);
+        __h.clear();
+        __h_d.clear();
+        return nullptr;
+    }
+    Py_XDECREF(s_numPyList_F);
+    return Py_BuildValue("(OO)", PyRes_i, PyRes_o);
+}
+PyObject *cdlu::IO_FWM180602::read(int batchNum, PyObject *batchShape) { // Note batchShape would not be used here.
+    try {
+        if (batchNum <= 0)
+            throw 0x010;
+        if (batchShape != Py_None) 
+            throw 0x011;
+        if (!__h.is_open() || !__h_d.is_open())
+            throw 0x00E;
+    }
+    catch (int errornum) {
+        cerr << cdlu::DLU_error_log(errornum) << endl;
+        return nullptr;
+    }
+    if (PyArray_API == nullptr) {
+        import_array();
+    }
+    PyObject *PyRes_i = nullptr;
+    PyObject *PyRes_o = nullptr;
+    DataType *out_data_i = nullptr;
+    DataType *out_data_o = nullptr;
+    try {
+        std::default_random_engine rd_e(rand());
+        std::uniform_int_distribution<size_t> rd_ind(0, evalSize - 1);
+        std::shared_ptr<size_t []> indList(new size_t[batchNum]);
+        auto indList_p = indList.get();
+        for (auto i = 0; i < batchNum; i++) {
+            indList_p[i] = rd_ind(rd_e);
+        }
+        // Build the data from the geophysical database.
+        out_data_i = new DataType[num_m*batchNum];
+        for (decltype(batchNum) i = 0; i < batchNum; i++) {
+            auto cur_data = out_data_i + i * num_m;
+            auto f_pos = i_base + static_cast<decltype(i_base)>(indList_p[i] * num_m * sizeof(DataType));
+            __h.clear();
+            __h.seekg(f_pos, std::ios::beg);
+            __h.read(reinterpret_cast<char *>(cur_data), num_m * sizeof(DataType));
+            if (!__h.good())
+                throw 0x105;
+        }
+        npy_intp odims_i[] = { static_cast<npy_intp>(batchNum), static_cast<npy_intp>(num_m) };
+        PyRes_i = PyArray_SimpleNewFromData(2, odims_i, FWDCURVES180602_DATATYPE, reinterpret_cast<void *>(out_data_i));
+        if (PyRes_i == nullptr) {
+            throw 0x209;
+        }
+        PyArray_ENABLEFLAGS((PyArrayObject *)PyRes_i, NPY_ARRAY_OWNDATA);
+        // Build the data from the response database.
+        out_data_o = new DataType[FWDCURVES180602_NUMPOINTS*batchNum];
+        for (decltype(batchNum) i = 0; i < batchNum; i++) {
+            auto cur_data = out_data_o + i * FWDCURVES180602_NUMPOINTS;
+            auto f_pos = o_base + static_cast<decltype(o_base)>(indList_p[i] * FWDCURVES180602_NUMPOINTS * sizeof(DataType));
+            __h_d.clear();
+            __h_d.seekg(f_pos, std::ios::beg);
+            __h_d.read(reinterpret_cast<char *>(cur_data), FWDCURVES180602_NUMPOINTS * sizeof(DataType));
+            if (!__h_d.good())
+                throw 0x105;
+        }
+        npy_intp odims_o[] = { static_cast<npy_intp>(batchNum), FWDCURVES180602_NUMPOINTS };
+        PyRes_o = PyArray_SimpleNewFromData(2, odims_o, FWDCURVES180602_DATATYPE, reinterpret_cast<void *>(out_data_o));
+        if (PyRes_o == nullptr) {
+            throw 0x209;
+        }
+        PyArray_ENABLEFLAGS((PyArrayObject *)PyRes_o, NPY_ARRAY_OWNDATA);
+    }
+    catch (int errornum) {
+        cerr << cdlu::DLU_error_log(errornum) << endl;
+        if (PyRes_i) {
+            Py_XDECREF(PyRes_i);
+        }
+        else if (out_data_i) {
+            delete[] out_data_i;
+        }
+        if (PyRes_o) {
+            Py_XDECREF(PyRes_o);
+        }
+        else if (out_data_o) {
+            delete[] out_data_o;
+        }
+        __h.clear();
+        __h_d.clear();
+        return nullptr;
+    }
+    return Py_BuildValue("(OO)", PyRes_i, PyRes_o);
+}
+bool cdlu::IO_FWM180602::save(string filename) {
+    return false;
+}
+std::ostream & cdlu::IO_FWM180602::__print(std::ostream & out) const {
+    auto self_size = size();
+    out << "<IOHandle - FWM180602:" << endl;
+    auto empty = true;
+    if (__h.is_open()) {
+        empty = false;
+        out << "    |-i:            path=" << __filename << endl;
+        out << "    |-i: num. of samples=" << evalSize << endl;
+        out << "    |-i:      param dims=" << num_m << endl;
+    }
+    if (empty) {
+        out << "    empty" << endl;
+    }
+    out << ">";
+    return out;
+}
+
 cdlu::Projector::Projector(void) :
 in_size(0), out_size(0) {
     map_forward.clear();
@@ -672,6 +1066,7 @@ PyObject* cdlu::Projector::action(PyObject *PyPicture, bool inversed) {
     if (PyArray_API == nullptr) {
         import_array();
     }
+    PyObject *PyResPic = nullptr;
     auto in_size_ref = &in_size;
     auto out_size_ref = &out_size;
     auto map_ref = &map_forward;
@@ -680,47 +1075,52 @@ PyObject* cdlu::Projector::action(PyObject *PyPicture, bool inversed) {
         out_size_ref = &in_size;
         map_ref = &map_inverse;
     }
-    auto in_pic_size = PyArray_NBYTES((PyArrayObject *)PyPicture);
-    //cout << "pic_size=" << in_pic_size << endl;
-    auto in_data = PyArray_BYTES((PyArrayObject *)PyPicture);
-    if (in_data == nullptr) {
-        cerr << DLU_error_log(0x003) << endl;
-        Py_RETURN_NONE;
-    }
-    auto dim_num = PyArray_NDIM((PyArrayObject*)PyPicture);
-    auto odims = PyArray_SHAPE((PyArrayObject *)PyPicture);
-    auto ochannel = odims[dim_num - 1] * (*out_size_ref);
-    auto out_pic_size = in_pic_size / (*in_size_ref) * (*out_size_ref);
-    if (ochannel % (*in_size_ref) != 0) {
-        cerr << DLU_error_log(0x004) << endl;
-        Py_RETURN_NONE;
-    }
-    else {
-        ochannel /= *in_size_ref;
-        odims[dim_num - 1] = ochannel;
-        //cout << "get inversed ochannel: " << odims[dim_num - 1] << ", in_size_ref=" << *in_size_ref << ", out_size_ref=" << *out_size_ref << endl;
-    }
-    auto dtype = PyArray_TYPE((PyArrayObject*)PyPicture);
-    auto out_data = new char[__prodNpy(odims, dim_num)];
-    
-    DataChunk curIndex;
-    /*for (auto it_f = map_ref->begin(); it_f != map_ref->end(); it_f++) {
-        cout << "    ( " << it_f->first << " -> " << it_f->second << " )" << endl;
-    }*/
-    //auto out_iter = (PyArrayIterObject *)PyArray_IterNew(PyFrame);
-    auto it_o = out_data;
-    for (auto it_i = in_data; it_i < in_data + in_pic_size; it_i += (*in_size_ref)) {
-        curIndex.set_unsafe(it_i, *in_size_ref);
-        //cout << curIndex << "->";
-        auto curIt = map_ref->find(curIndex);
-        if (curIt != map_ref->end()) {
-            //cout << curIt->second << endl;
-            it_o = curIt->second.get_copied(it_o);
+    try {
+        auto in_pic_size = PyArray_NBYTES((PyArrayObject *)PyPicture);
+        //cout << "pic_size=" << in_pic_size << endl;
+        auto in_data = PyArray_BYTES((PyArrayObject *)PyPicture);
+        if (in_data == nullptr) {
+            cerr << DLU_error_log(0x003) << endl;
+            throw 0x003;
         }
+        auto dim_num = PyArray_NDIM((PyArrayObject*)PyPicture);
+        auto odims = PyArray_SHAPE((PyArrayObject *)PyPicture);
+        auto ochannel = odims[dim_num - 1] * (*out_size_ref);
+        auto out_pic_size = in_pic_size / (*in_size_ref) * (*out_size_ref);
+        if (ochannel % (*in_size_ref) != 0) {
+            throw 0x004;
+        }
+        else {
+            ochannel /= *in_size_ref;
+            odims[dim_num - 1] = ochannel;
+            //cout << "get inversed ochannel: " << odims[dim_num - 1] << ", in_size_ref=" << *in_size_ref << ", out_size_ref=" << *out_size_ref << endl;
+        }
+        auto dtype = PyArray_TYPE((PyArrayObject*)PyPicture);
+        auto out_data = new char[__prodNpy(odims, dim_num)];
+
+        DataChunk curIndex;
+        /*for (auto it_f = map_ref->begin(); it_f != map_ref->end(); it_f++) {
+        cout << "    ( " << it_f->first << " -> " << it_f->second << " )" << endl;
+        }*/
+        //auto out_iter = (PyArrayIterObject *)PyArray_IterNew(PyFrame);
+        auto it_o = out_data;
+        for (auto it_i = in_data; it_i < in_data + in_pic_size; it_i += (*in_size_ref)) {
+            curIndex.set_unsafe(it_i, *in_size_ref);
+            //cout << curIndex << "->";
+            auto curIt = map_ref->find(curIndex);
+            if (curIt != map_ref->end()) {
+                //cout << curIt->second << endl;
+                it_o = curIt->second.get_copied(it_o);
+            }
+        }
+        //cout << "Complete" << endl;
+        curIndex.set_unsafe(nullptr, 0);
+        PyResPic = PyArray_SimpleNewFromData(dim_num, odims, dtype, reinterpret_cast<void *>(out_data));
     }
-    //cout << "Complete" << endl;
-    curIndex.set_unsafe(nullptr, 0);
-    PyObject *PyResPic = PyArray_SimpleNewFromData(dim_num, odims, dtype, reinterpret_cast<void *>(out_data));
+    catch (int errornum) {
+        cerr << cdlu::DLU_error_log(errornum) << endl;
+        return nullptr;
+    }
     return PyResPic;
 }
 
